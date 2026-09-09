@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Contagem Inicial</title>
+<style>
+:root {
+  --bg:#f3f4f6; --card:#fff; --text:#111827; --muted:#6b7280;
+  --primary:#2563eb; --primary-dark:#1d4ed8; --border:#e5e7eb;
+  --danger:#dc2626; --success:#16a34a;
+}
+* { box-sizing:border-box; }
+html,body { margin:0; padding:0; min-height:100%; font-family:Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text); }
+body { padding-bottom:env(safe-area-inset-bottom); }
+.app { max-width:760px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; }
+header {
+  position:sticky; top:0; z-index:10; background:#111827; color:white;
+  padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.18);
+}
+h1 { margin:0 0 4px; font-size:21px; }
+.subtitle { color:#d1d5db; font-size:13px; }
+.controls { padding:12px; background:var(--card); border-bottom:1px solid var(--border); }
+.row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+label { display:block; font-size:12px; font-weight:700; margin-bottom:5px; color:#374151; }
+input,select {
+  width:100%; border:1px solid #d1d5db; border-radius:10px; padding:12px;
+  font-size:16px; background:white; color:var(--text); outline:none;
+}
+input:focus,select:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+.search-wrap { position:relative; }
+.search-wrap input { padding-left:40px; }
+.search-icon { position:absolute; left:13px; top:12px; font-size:18px; color:var(--muted); }
+.statusbar { display:flex; justify-content:space-between; gap:10px; margin-top:8px; font-size:12px; color:var(--muted); }
+.list { padding:10px 12px 100px; }
+.product {
+  display:grid; grid-template-columns:minmax(0,1fr) 110px; gap:10px; align-items:center;
+  background:var(--card); border:1px solid var(--border); border-radius:12px;
+  padding:10px 12px; margin-bottom:8px;
+}
+.name { font-size:15px; line-height:1.25; font-weight:600; word-break:break-word; }
+.qty { text-align:center; font-weight:700; }
+.qty input { text-align:center; padding:10px 6px; font-size:18px; font-weight:700; }
+.hidden { display:none !important; }
+.empty { text-align:center; color:var(--muted); padding:35px 15px; }
+.fab {
+  position:fixed; right:max(18px, env(safe-area-inset-right)); bottom:max(18px, env(safe-area-inset-bottom));
+  width:62px; height:62px; border:0; border-radius:50%; background:var(--primary); color:white;
+  font-size:27px; box-shadow:0 5px 18px rgba(0,0,0,.25); cursor:pointer; z-index:20;
+}
+.fab:disabled { opacity:.5; cursor:default; }
+.overlay {
+  position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.42); display:flex;
+  align-items:center; justify-content:center; padding:20px;
+}
+.dialog {
+  width:min(420px,100%); background:white; border-radius:16px; padding:22px;
+  box-shadow:0 15px 45px rgba(0,0,0,.3); text-align:center;
+}
+.spinner {
+  width:38px; height:38px; margin:0 auto 12px; border:4px solid #dbeafe;
+  border-top-color:var(--primary); border-radius:50%; animation:spin .8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.toast {
+  position:fixed; left:50%; bottom:92px; transform:translateX(-50%);
+  max-width:calc(100% - 30px); background:#111827; color:white; padding:12px 16px;
+  border-radius:10px; font-size:14px; z-index:50; box-shadow:0 5px 20px rgba(0,0,0,.25);
+}
+.toast.success { background:#166534; } .toast.error { background:#991b1b; }
+button.secondary {
+  border:1px solid #d1d5db; background:white; border-radius:10px; padding:10px 14px;
+  font-weight:700; cursor:pointer;
+}
+@media (max-width:560px) {
+  .row { grid-template-columns:1fr; }
+  .product { grid-template-columns:minmax(0,1fr) 96px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <h1>Contagem Inicial</h1>
+  <div class="subtitle">Informe as quantidades dos produtos e envie a contagem.</div>
+</header>
+
+<section class="controls">
+  <div class="row">
+    <div>
+      <label for="loja">Loja</label>
+      <select id="loja">
+        <option value="">Selecione...</option>
+        <option>Terminal 3</option>
+        <option>Forneria Leste</option>
+        <option>Cafe Leste</option>
+        <option>Forneria Oeste</option>
+        <option>Padaria</option>
+        <option>Estoque</option>
+        <option>Exposicao</option>
+      </select>
+    </div>
+    <div>
+      <label for="login">Responsável</label>
+      <input id="login" type="text" autocomplete="username" placeholder="Nome do responsável">
+    </div>
+  </div>
+
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input id="busca" type="search" inputmode="search" autocomplete="off"
+           placeholder="Buscar produto..." aria-label="Buscar produto">
+  </div>
+
+  <div class="statusbar">
+    <span id="contador">0 produtos</span>
+    <span id="selecionados">0 preenchidos</span>
+  </div>
+</section>
+
+<main id="lista" class="list"></main>
+</div>
+
+<button id="btnEnviar" class="fab" title="Enviar contagem" aria-label="Enviar contagem">➤</button>
+
+<div id="overlay" class="overlay hidden">
+  <div class="dialog">
+    <div class="spinner"></div>
+    <strong id="progressTitle">Enviando...</strong>
+    <div id="progressText" style="margin-top:7px;color:#6b7280;font-size:13px;">
+      Aguarde enquanto os dados são enviados.
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+// ============================================================
+// CONFIGURAÇÃO
+// ============================================================
+// Mantidos os mesmos endpoints e IDs usados no código Android.
+// NÃO publique um token GitHub real em um HTML público.
+// Se o arquivo for usado somente internamente, ainda assim é
+// preferível fornecer o token por variável/configuração segura.
+const CONFIG = {
+  FORM_URL: "https://docs.google.com/forms/d/e/1FAIpQLSd27r7FDuRzXDjxxtJNL67bgPL8eqYtGP6g94yAnuQF6t8a8w/formResponse",
+  GIST_ID: "d180f00a2323b5345b3e85ad2396ee91",
+  GIST_FILE_NAME: "EsbelaEstoque.Json",
+  GITHUB_TOKEN: "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", // coloque o token SOMENTE se este HTML não for público
+  FORM_ENTRIES: {
+    produto: "entry.1028941405",
+    quantidade: "entry.667992309",
+    loja: "entry.1248793481",
+    responsavel: "entry.918181913"
+  }
+};
+
+const PRODUTOS_INICIAIS = [
+  "pct Pão de queijo mini",
+  "pct Pão de queijo Dona Gilda",
+  "pct Empada",
+  "pct Esfirra carne",
+  "pct Esfirra frango",
+  "pct Enroladinho",
+  "pct Coxinha padaria",
+  "pct Pão batata requeijão",
+  "pct Pão de batata frango",
+  "far Agua com gás",
+  "far Agua sem gás",
+  "cx Agua de coco",
+  "far Coca",
+  "far Coca zero",
+  "far Dellvale manga",
+  "far Dellvale maracujá",
+  "far Dellvale pêssego",
+  "far Dellvale uva",
+  "far Dellvale Pink",
+  "far Dellvale Limonada",
+  "far Fanta laranja",
+  "far Fanta uva",
+  "far Fanta guarana",
+  "far IceTea limão ZERO",
+  "far IceTea pêssego ZERO",
+  "far IceTea limão",
+  "far IceTea pêssego",
+  "vIceTea chá verde",
+  "far IceTea Lichia",
+  "far Guaraná",
+  "far Guaraná zero",
+  "far H2O",
+  "far H2O limoneto",
+  "far Sprite",
+  "far Sprite ZERO",
+  "far Schweppes",
+  "far Tônica",
+  "Pacote/caixa laranja",
+  "Far Heineken",
+  "Far Eisenbahn",
+  "Far Estrella Galicia",
+  "Far Therezópolis",
+  "Far Corona",
+  "Far Spaten",
+  "far Gatorade frutas cítricas",
+  "far Gatorade Maracuja",
+  "far Gatorade laranja",
+  "far Gatorade limão",
+  "far Gatorade morango",
+  "far Gatorade uva",
+  "far Gatorade Berry blue",
+  "far Gatorade Tangerina",
+  "far Jungler laranja",
+  "far Jungler limão",
+  "far Jungler morango e limão",
+  "far Jungler uva",
+  "far Jungler Abacaxi",
+  "cx Chá Copo",
+  "cx Tal da Castanha Baunilha",
+  "cx Todinho",
+  "far Monster",
+  "far Redbull",
+  "3 corações - pingado",
+  "3 corações - Chocolate",
+  "3 corações - Zero",
+  "3 corações - Caramelo",
+  "3 corações - Classico",
+  "3 corações - Cookies",
+  "3 corações - POWER",
+  "CX Leite",
+  "Un Leite Vegetal Caju+Coco",
+  "Un Leite Vegetal Castanha",
+  "pct Café em Grão",
+  "pct Café em Pó",
+  "pct Chocolate Cremoso",
+  "pct Chocolate Quente",
+  "pct Cappuccino",
+  "un Balde Nutella",
+  "un Calda de Caramelo",
+  "un Calda de Chocolate",
+  "un Chantilly",
+  "un Bisnaga Requeijão",
+  "cx Brigadeiro",
+  "cx Quindim",
+  "un Cookie",
+  "un Bolo de Cenoura",
+  "un Doce Nozes",
+  "un Doce Rafaelo",
+  "un Doce Ferrero",
+  "un Doce Suspiro",
+  "un Torta Red Velvet",
+  "un Torta Chocolate",
+  "un Torta Holandesa",
+  "un Macarron",
+  "un Bolo caseiro",
+  "un Salada de Fruta",
+  "un Lanche Natural",
+  "pct Croissant Padaria",
+  "pct Pão MultiGrão",
+  "pct Pão Francês",
+  "pct Pão ciabatha",
+  "pct Pão Baguete Francesa",
+  "pct Pão Baguete Parmesão",
+  "pct Pão de azeitona",
+  "pct Baguete recheada Pres.QJ",
+  "pct Baguete recheada Salame",
+  "pct Baguete recheada Frango",
+  "Pacotinho Presunto 500g",
+  "Pacotinho Queijo Prato 500g",
+  "Pacotinho Mortadela 500g",
+  "Pacotinho Peito de Peru 500g",
+  "Pacotinho Salame 350g",
+  "Peça Presunto",
+  "Peça Queijo Prato",
+  "Peça Mussarela",
+  "Peça Mortadela",
+  "Peça Peito de Peru",
+  "Peça Salame",
+  "un Cigarro",
+  "CX Ketchup",
+  "CX Mostarda",
+  "CX Maionese",
+  "CX Adocante",
+  "CX Acucar",
+  "CX Pimenta",
+  "PCT Copo Termico",
+  "PCT Tampa Copo Termico",
+  "cx Barra Lacta",
+  "cx Bis EXTRA",
+  "cx Snickers",
+  "cx Barrinha 3 Corações",
+  "cx Halls",
+  "cx Trident",
+  "un Torcida",
+  "cx M&M",
+  "cx Mentos",
+  "cx Mini Oreo",
+  "cx Chicletes",
+  "cx Frutella",
+  "cx KitKat",
+  "un Rufles",
+  "un Ovinhos de Amendoim",
+  "PCT Sonho de Valsa",
+  "PCT Ouro Branco",
+  "CX Twix",
+  "Un Zaytas",
+  "un Pringles",
+  "Cx Nespresso Cha Hibisco",
+  "Cx Nespresso Cha Capim Cidreira",
+  "Cx Nespresso Cha Camomila",
+  "Cx Nespresso Cha Verde",
+  "Cx Nespresso Cha Hortela",
+  "Cx Nespresso Cha Laranja Med",
+  "Cx Nespresso Cha Maca verde",
+  "Cx Nespresso DESCAFEINADO",
+  "PCT Monster TRAD"
+];
+
+const state = {
+  produtos: {},
+  enviando: false,
+  loja: "",
+  login: ""
+};
+
+const $ = id => document.getElementById(id);
+
+function removerAcentos(texto) {
+  return String(texto ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function chaveBusca(texto) {
+  return removerAcentos(texto).toLowerCase().trim();
+}
+
+function escapeHtml(texto) {
+  return String(texto ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"
+  })[c]);
+}
+
+function toast(msg, tipo="") {
+  const el = $("toast");
+  el.textContent = msg;
+  el.className = "toast " + tipo;
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => el.classList.add("hidden"), 4200);
+}
+
+function mostrarOverlay(titulo, texto) {
+  $("progressTitle").textContent = titulo;
+  $("progressText").textContent = texto;
+  $("overlay").classList.remove("hidden");
+}
+
+function esconderOverlay() {
+  $("overlay").classList.add("hidden");
+}
+
+function inicializarProdutos() {
+  state.produtos = {};
+  for (const nome of PRODUTOS_INICIAIS) state.produtos[nome] = "";
+  render();
+}
+
+function render() {
+  const termo = chaveBusca($("busca").value);
+  const nomes = Object.keys(state.produtos).filter(nome =>
+    chaveBusca(nome).includes(termo)
+  );
+
+  const lista = $("lista");
+  lista.innerHTML = "";
+
+  if (!nomes.length) {
+    lista.innerHTML = '<div class="empty">Nenhum produto encontrado.</div>';
+  } else {
+    const frag = document.createDocumentFragment();
+    for (const nome of nomes) {
+      const item = document.createElement("div");
+      item.className = "product";
+      item.innerHTML = `
+        <div class="name">${escapeHtml(nome)}</div>
+        <div class="qty">
+          <input type="number" min="0" step="1" inputmode="numeric"
+                 aria-label="Quantidade de ${escapeHtml(nome)}"
+                 data-produto="${escapeHtml(nome)}"
+                 value="${escapeHtml(state.produtos[nome])}">
+        </div>`;
+      frag.appendChild(item);
+    }
+    lista.appendChild(frag);
+
+    lista.querySelectorAll("input[data-produto]").forEach(input => {
+      input.addEventListener("input", () => {
+        const nome = input.dataset.produto;
+        // Mantém somente números inteiros não negativos.
+        input.value = input.value.replace(/[^0-9]/g, "");
+        state.produtos[nome] = input.value;
+        atualizarContadores();
+      });
+    });
+  }
+
+  $("contador").textContent = `${nomes.length} produto${nomes.length === 1 ? "" : "s"}`;
+  atualizarContadores();
+}
+
+function atualizarContadores() {
+  const n = Object.values(state.produtos)
+    .filter(v => String(v).trim() !== "").length;
+  $("selecionados").textContent = `${n} preenchido${n === 1 ? "" : "s"}`;
+}
+
+function salvarDadosLocais() {
+  localStorage.setItem("contagem_loja", $("loja").value);
+  localStorage.setItem("contagem_login", $("login").value);
+}
+
+function carregarDadosLocais() {
+  const params = new URLSearchParams(location.search);
+  const loja = params.get("nomeLoja") || localStorage.getItem("contagem_loja") || "";
+  const login = params.get("login") || localStorage.getItem("contagem_login") || "";
+  $("loja").value = loja;
+  $("login").value = login;
+}
+
+function validar() {
+  if (!$("loja").value.trim()) {
+    toast("Selecione a loja antes de enviar.", "error");
+    $("loja").focus();
+    return false;
+  }
+  if (!$("login").value.trim()) {
+    toast("Informe o responsável.", "error");
+    $("login").focus();
+    return false;
+  }
+  const temQuantidade = Object.values(state.produtos)
+    .some(v => String(v).trim() !== "");
+  if (!temQuantidade) {
+    toast("Informe pelo menos uma quantidade.", "error");
+    return false;
+  }
+  return true;
+}
+
+async function enviarSomenteForms(produto, quantidade) {
+  const dados = new URLSearchParams();
+  dados.set(CONFIG.FORM_ENTRIES.produto, produto);
+  dados.set(CONFIG.FORM_ENTRIES.quantidade, quantidade);
+  dados.set(CONFIG.FORM_ENTRIES.loja, state.loja);
+  dados.set(CONFIG.FORM_ENTRIES.responsavel, state.login);
+
+  // Google Forms normalmente não libera leitura da resposta via CORS.
+  // no-cors permite o POST sem tentar ler a resposta.
+  await fetch(CONFIG.FORM_URL, {
+    method: "POST",
+    mode: "no-cors",
+    body: dados,
+    keepalive: true
+  });
+}
+
+async function obterGist() {
+  if (!CONFIG.GITHUB_TOKEN.trim()) {
+    throw new Error("Token GitHub não configurado no CONFIG.GITHUB_TOKEN.");
+  }
+
+  const r = await fetch("https://api.github.com/gists/" + encodeURIComponent(CONFIG.GIST_ID), {
+    method: "GET",
+    headers: {
+      "Authorization": "Bearer " + CONFIG.GITHUB_TOKEN,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+  });
+
+  const texto = await r.text();
+  if (!r.ok) throw new Error("GET GitHub " + r.status + ": " + resumirErroGitHub(texto));
+  return JSON.parse(texto);
+}
+
+function encontrarArquivoJson(files) {
+  if (files && Object.prototype.hasOwnProperty.call(files, CONFIG.GIST_FILE_NAME))
+    return CONFIG.GIST_FILE_NAME;
+
+  const nomes = Object.keys(files || {});
+  const exato = nomes.find(n => n.toLowerCase() === CONFIG.GIST_FILE_NAME.toLowerCase());
+  if (exato) return exato;
+
+  return nomes.find(n => n.toLowerCase().endsWith(".json")) || null;
+}
+
+function carregarEstoque(content) {
+  const json = String(content ?? "").trim();
+
+  if (!json) return { produtos: [] };
+
+  try {
+    const estoque = JSON.parse(json);
+    if (Array.isArray(estoque)) return { produtos: estoque };
+    if (estoque && Array.isArray(estoque.produtos)) return estoque;
+    if (estoque && estoque.produto && estoque.lojas) return { produtos: [estoque] };
+  } catch (_) {}
+
+  try {
+    return { produtos: JSON.parse("[" + json + "]") };
+  } catch (_) {
+    throw new Error("O conteúdo do JSON do Gist não pôde ser interpretado.");
+  }
+}
+
+function resumirErroGitHub(body) {
+  try {
+    const j = JSON.parse(body);
+    return j.message || body.slice(0, 160);
+  } catch (_) {
+    return String(body || "sem resposta").slice(0, 160);
+  }
+}
+
+async function atualizarGistCompleto() {
+  const gist = await obterGist();
+  const files = gist.files || {};
+  const nomeArquivo = encontrarArquivoJson(files);
+
+  if (!nomeArquivo) {
+    throw new Error("Arquivo " + CONFIG.GIST_FILE_NAME + " não encontrado no Gist.");
+  }
+
+  const content = files[nomeArquivo]?.content ?? "";
+  const estoque = carregarEstoque(content);
+  const produtos = estoque.produtos;
+  const lojaEstoque = state.loja.toLowerCase() === "estoque";
+
+  for (const [produto, quantidadeRaw] of Object.entries(state.produtos)) {
+    const quantidadeTexto = String(quantidadeRaw ?? "").trim();
+
+    if (lojaEstoque && !quantidadeTexto) continue;
+
+    let valorLojaAtual = 0;
+    if (quantidadeTexto) {
+      const n = parseInt(quantidadeTexto, 10);
+      valorLojaAtual = Number.isFinite(n) ? n : 0;
+    }
+
+    let encontrado = false;
+
+    for (const item of produtos) {
+      if (String(item?.produto ?? "").toLowerCase() === produto.toLowerCase()) {
+        if (!item.lojas || typeof item.lojas !== "object") item.lojas = {};
+
+        if (lojaEstoque) {
+          const atual = Number.parseInt(item.lojas[state.loja], 10);
+          item.lojas[state.loja] = (Number.isFinite(atual) ? atual : 0) + valorLojaAtual;
+        } else {
+          item.lojas[state.loja] = valorLojaAtual;
+        }
+
+        encontrado = true;
+        break;
+      }
+    }
+
+    if (!encontrado) {
+      const lojas = {
+        "Padaria": 0,
+        "Forneria Oeste": 0,
+        "Cafe Leste": 0,
+        "Forneria Leste": 0,
+        "Terminal 3": 0,
+        "Estoque": 0
+      };
+      lojas[state.loja] = valorLojaAtual;
+      produtos.push({ produto, lojas });
+    }
+  }
+
+  estoque.dataAtualizacao = new Date().toISOString();
+
+  const body = {
+    files: {
+      [nomeArquivo]: {
+        content: JSON.stringify(estoque, null, 2)
+      }
+    }
+  };
+
+  const r = await fetch("https://api.github.com/gists/" + encodeURIComponent(CONFIG.GIST_ID), {
+    method: "PATCH",
+    headers: {
+      "Authorization": "Bearer " + CONFIG.GITHUB_TOKEN,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+
+  const texto = await r.text();
+  if (!r.ok) throw new Error("PATCH GitHub " + r.status + ": " + resumirErroGitHub(texto));
+  return true;
+}
+
+async function enviarRespostas() {
+  if (state.enviando || !validar()) return;
+
+  state.enviando = true;
+  $("btnEnviar").disabled = true;
+  state.loja = $("loja").value.trim();
+  state.login = $("login").value.trim();
+  salvarDadosLocais();
+
+  const itens = Object.entries(state.produtos)
+    .filter(([_, quantidade]) => String(quantidade).trim() !== "");
+
+  mostrarOverlay("Enviando contagem...", `0 de ${itens.length} itens enviados.`);
+
+  try {
+    let enviados = 0;
+
+    // Equivalente ao envio paralelo do ExecutorService.
+    const lote = 4;
+    for (let i = 0; i < itens.length; i += lote) {
+      const grupo = itens.slice(i, i + lote);
+      await Promise.all(grupo.map(([produto, quantidade]) =>
+        enviarSomenteForms(produto, quantidade)
+      ));
+      enviados += grupo.length;
+      $("progressText").textContent = `${enviados} de ${itens.length} itens enviados.`;
+    }
+
+    $("progressTitle").textContent = "Atualizando estoque...";
+    $("progressText").textContent = "Salvando o Gist.";
+
+    await atualizarGistCompleto();
+
+    esconderOverlay();
+    toast("Itens enviados com sucesso!", "success");
+
+    // Limpa quantidades após envio bem-sucedido.
+    for (const nome of Object.keys(state.produtos)) state.produtos[nome] = "";
+    render();
+
+  } catch (erro) {
+    esconderOverlay();
+    console.error(erro);
+    toast("Erro ao enviar: " + (erro.message || erro), "error");
+  } finally {
+    state.enviando = false;
+    $("btnEnviar").disabled = false;
+  }
+}
+
+$("busca").addEventListener("input", render);
+$("loja").addEventListener("change", salvarDadosLocais);
+$("login").addEventListener("input", salvarDadosLocais);
+$("btnEnviar").addEventListener("click", enviarRespostas);
+
+carregarDadosLocais();
+inicializarProdutos();
+</script>
+</body>
+</html>
