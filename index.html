@@ -129,7 +129,7 @@ button.secondary {
     <div class="spinner"></div>
     <strong id="progressTitle">Enviando...</strong>
     <div id="progressText" style="margin-top:7px;color:#6b7280;font-size:13px;">
-      Aguarde enquanto os dados são enviados.
+      Aguarde enquanto os dados são enviados ao Google Forms.
     </div>
   </div>
 </div>
@@ -140,15 +140,9 @@ button.secondary {
 // ============================================================
 // CONFIGURAÇÃO
 // ============================================================
-// Mantidos os mesmos endpoints e IDs usados no código Android.
-// NÃO publique um token GitHub real em um HTML público.
-// Se o arquivo for usado somente internamente, ainda assim é
-// preferível fornecer o token por variável/configuração segura.
+// Configuração do envio para o Google Forms.
 const CONFIG = {
   FORM_URL: "https://docs.google.com/forms/d/e/1FAIpQLSd27r7FDuRzXDjxxtJNL67bgPL8eqYtGP6g94yAnuQF6t8a8w/formResponse",
-  GIST_ID: "",
-  GIST_FILE_NAME: "EsbelaEstoque.Json",
-  GITHUB_TOKEN: "", // coloque o token SOMENTE se este HTML não for público
   FORM_ENTRIES: {
     produto: "entry.1028941405",
     quantidade: "entry.667992309",
@@ -464,147 +458,6 @@ async function enviarSomenteForms(produto, quantidade) {
   });
 }
 
-async function obterGist() {
-  if (!CONFIG.GITHUB_TOKEN.trim()) {
-    throw new Error("Token GitHub não configurado no CONFIG.GITHUB_TOKEN.");
-  }
-
-  const r = await fetch("https://api.github.com/gists/" + encodeURIComponent(CONFIG.GIST_ID), {
-    method: "GET",
-    headers: {
-      "Authorization": "Bearer " + CONFIG.GITHUB_TOKEN,
-      "Accept": "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28"
-    }
-  });
-
-  const texto = await r.text();
-  if (!r.ok) throw new Error("GET GitHub " + r.status + ": " + resumirErroGitHub(texto));
-  return JSON.parse(texto);
-}
-
-function encontrarArquivoJson(files) {
-  if (files && Object.prototype.hasOwnProperty.call(files, CONFIG.GIST_FILE_NAME))
-    return CONFIG.GIST_FILE_NAME;
-
-  const nomes = Object.keys(files || {});
-  const exato = nomes.find(n => n.toLowerCase() === CONFIG.GIST_FILE_NAME.toLowerCase());
-  if (exato) return exato;
-
-  return nomes.find(n => n.toLowerCase().endsWith(".json")) || null;
-}
-
-function carregarEstoque(content) {
-  const json = String(content ?? "").trim();
-
-  if (!json) return { produtos: [] };
-
-  try {
-    const estoque = JSON.parse(json);
-    if (Array.isArray(estoque)) return { produtos: estoque };
-    if (estoque && Array.isArray(estoque.produtos)) return estoque;
-    if (estoque && estoque.produto && estoque.lojas) return { produtos: [estoque] };
-  } catch (_) {}
-
-  try {
-    return { produtos: JSON.parse("[" + json + "]") };
-  } catch (_) {
-    throw new Error("O conteúdo do JSON do Gist não pôde ser interpretado.");
-  }
-}
-
-function resumirErroGitHub(body) {
-  try {
-    const j = JSON.parse(body);
-    return j.message || body.slice(0, 160);
-  } catch (_) {
-    return String(body || "sem resposta").slice(0, 160);
-  }
-}
-
-async function atualizarGistCompleto() {
-  const gist = await obterGist();
-  const files = gist.files || {};
-  const nomeArquivo = encontrarArquivoJson(files);
-
-  if (!nomeArquivo) {
-    throw new Error("Arquivo " + CONFIG.GIST_FILE_NAME + " não encontrado no Gist.");
-  }
-
-  const content = files[nomeArquivo]?.content ?? "";
-  const estoque = carregarEstoque(content);
-  const produtos = estoque.produtos;
-  const lojaEstoque = state.loja.toLowerCase() === "estoque";
-
-  for (const [produto, quantidadeRaw] of Object.entries(state.produtos)) {
-    const quantidadeTexto = String(quantidadeRaw ?? "").trim();
-
-    if (lojaEstoque && !quantidadeTexto) continue;
-
-    let valorLojaAtual = 0;
-    if (quantidadeTexto) {
-      const n = parseInt(quantidadeTexto, 10);
-      valorLojaAtual = Number.isFinite(n) ? n : 0;
-    }
-
-    let encontrado = false;
-
-    for (const item of produtos) {
-      if (String(item?.produto ?? "").toLowerCase() === produto.toLowerCase()) {
-        if (!item.lojas || typeof item.lojas !== "object") item.lojas = {};
-
-        if (lojaEstoque) {
-          const atual = Number.parseInt(item.lojas[state.loja], 10);
-          item.lojas[state.loja] = (Number.isFinite(atual) ? atual : 0) + valorLojaAtual;
-        } else {
-          item.lojas[state.loja] = valorLojaAtual;
-        }
-
-        encontrado = true;
-        break;
-      }
-    }
-
-    if (!encontrado) {
-      const lojas = {
-        "Padaria": 0,
-        "Forneria Oeste": 0,
-        "Cafe Leste": 0,
-        "Forneria Leste": 0,
-        "Terminal 3": 0,
-        "Estoque": 0
-      };
-      lojas[state.loja] = valorLojaAtual;
-      produtos.push({ produto, lojas });
-    }
-  }
-
-  estoque.dataAtualizacao = new Date().toISOString();
-
-  const body = {
-    files: {
-      [nomeArquivo]: {
-        content: JSON.stringify(estoque, null, 2)
-      }
-    }
-  };
-
-  const r = await fetch("https://api.github.com/gists/" + encodeURIComponent(CONFIG.GIST_ID), {
-    method: "PATCH",
-    headers: {
-      "Authorization": "Bearer " + CONFIG.GITHUB_TOKEN,
-      "Accept": "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
-
-  const texto = await r.text();
-  if (!r.ok) throw new Error("PATCH GitHub " + r.status + ": " + resumirErroGitHub(texto));
-  return true;
-}
-
 async function enviarRespostas() {
   if (state.enviando || !validar()) return;
 
@@ -632,11 +485,6 @@ async function enviarRespostas() {
       enviados += grupo.length;
       $("progressText").textContent = `${enviados} de ${itens.length} itens enviados.`;
     }
-
-    $("progressTitle").textContent = "Atualizando estoque...";
-    $("progressText").textContent = "Salvando o Gist.";
-
-    await atualizarGistCompleto();
 
     esconderOverlay();
     toast("Itens enviados com sucesso!", "success");
